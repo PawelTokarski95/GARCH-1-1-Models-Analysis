@@ -1,5 +1,7 @@
 # GARCH-1-1-Models-Analysis
 
+- **Language**: R
+
 
 In this project, I analyze three versions of the popular financial volatility model: the standard GARCH(1,1) with a normal distribution, and two extensions with heavy-tailed distributions — Student’s t (std) and skewed Student’s t (sstd). These models describe how volatility in time series, especially financial returns, changes over time.
 
