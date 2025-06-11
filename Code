@@ -1,0 +1,126 @@
+library(quantmod)
+library(tidyquant)
+library(rugarch)
+library(dplyr)
+library(xts)
+library(tseries)
+
+etf_tickers <- c(
+  "SPY",    
+  "VGK",    
+  "EWJ",   
+  "FXI",   
+  "ACWI"   
+)
+
+data <- tq_get(etf_tickers, from = "2015-01-01", to = "2025-06-10")
+
+cut_date <- as.Date("2020-02-01")
+before_crisis <- data %>% filter(date >= as.Date("2015-01-02") & date < cut_date)
+after_crisis <- data %>% filter(date >= cut_date)
+
+models <- list(
+  sGARCH_norm = ugarchspec(
+    variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+    mean.model = list(armaOrder = c(0,0)),
+    distribution.model = "norm"
+  ),
+  sGARCH_std = ugarchspec(
+    variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+    mean.model = list(armaOrder = c(0,0)),
+    distribution.model = "std"
+  ),
+  sGARCH_sstd = ugarchspec(
+    variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+    mean.model = list(armaOrder = c(0,0)),
+    distribution.model = "sstd"
+  )
+)
+
+prepare_returns <- function(df, ticker) {
+  df_ticker <- df %>% filter(symbol == ticker) %>% select(date, close)
+  xts_prices <- xts(df_ticker$close, order.by = df_ticker$date)
+  all_dates <- seq(min(index(xts_prices)), max(index(xts_prices)), by = "days")
+  xts_prices_full <- merge(xts_prices, xts(, all_dates), fill = na.locf)
+  ret <- diff(log(xts_prices_full))
+  ret <- ret[!is.na(ret)]
+  return(ret)
+}
+
+before_returns <- list()
+after_returns <- list()
+fits <- list()
+forecasts <- list()
+errors <- list()
+
+for (ticker in etf_tickers) {
+  ret_before <- prepare_returns(before_crisis, ticker)
+  ret_after <- prepare_returns(after_crisis, ticker)
+  before_returns[[ticker]] <- ret_before
+  after_returns[[ticker]] <- ret_after
+  fits[[ticker]] <- lapply(models, function(spec) ugarchfit(spec, data = ret_before))
+  names(fits[[ticker]]) <- names(models)
+  n_forecast <- length(ret_after)
+  forecasts[[ticker]] <- lapply(fits[[ticker]], function(fit) ugarchforecast(fit, n.ahead = n_forecast))
+  names(forecasts[[ticker]]) <- names(models)
+  errors[[ticker]] <- lapply(forecasts[[ticker]], function(forecast) {
+    sigma_hat <- as.numeric(sigma(forecast))
+    real_sigma <- as.numeric(ret_after)^2
+    min_len <- min(length(sigma_hat), length(real_sigma))
+    err <- (sigma_hat[1:min_len] - real_sigma[1:min_len])^2
+    mae <- abs(sigma_hat[1:min_len] - real_sigma[1:min_len])
+    qlike_vec <- log(sigma_hat[1:min_len]^2) + real_sigma[1:min_len] / (sigma_hat[1:min_len]^2)
+    list(
+      MSE = mean(err),
+      MAE = mean(mae),
+      QLIKE = mean(qlike_vec),
+      QLIKE_vec = qlike_vec
+    )
+  })
+  names(errors[[ticker]]) <- names(models)
+}
+
+results_df <- do.call(rbind, lapply(names(errors), function(ticker) {
+  do.call(rbind, lapply(names(errors[[ticker]]), function(model_name) {
+    data.frame(
+      Ticker = ticker,
+      Model = model_name,
+      MSE = errors[[ticker]][[model_name]]$MSE,
+      MAE = errors[[ticker]][[model_name]]$MAE,
+      QLIKE = errors[[ticker]][[model_name]]$QLIKE
+    )
+  }))
+}))
+
+library(forecast)
+dm_results <- data.frame(Ticker = character(), Model1 = character(), Model2 = character(),
+                         DM_stat = numeric(), p_value = numeric(), Better = character())
+
+model_pairs <- list(
+  c("sGARCH_norm", "sGARCH_std"),
+  c("sGARCH_norm", "sGARCH_sstd"),
+  c("sGARCH_std", "sGARCH_sstd")
+)
+
+for (ticker in etf_tickers) {
+  for (pair in model_pairs) {
+    q1 <- errors[[ticker]][[pair[1]]]$QLIKE_vec
+    q2 <- errors[[ticker]][[pair[2]]]$QLIKE_vec
+    min_len <- min(length(q1), length(q2))
+    q1 <- q1[1:min_len]
+    q2 <- q2[1:min_len]
+    dm <- dm.test(q1, q2, alternative = "two.sided", h = 1, power = 2)
+    better_model <- ifelse(dm$statistic < 0, pair[1], pair[2])
+    dm_results <- rbind(dm_results, data.frame(
+      Ticker = ticker,
+      Model1 = pair[1],
+      Model2 = pair[2],
+      DM_stat = round(dm$statistic, 3),
+      p_value = round(dm$p.value, 4),
+      Better = better_model
+    ))
+  }
+}
+
+print(results_df)
+print(dm_results)
