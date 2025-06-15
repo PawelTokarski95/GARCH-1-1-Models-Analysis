@@ -5,7 +5,7 @@
 
 In this project, I analyze three versions of the popular financial volatility model: the standard GARCH(1,1) with a normal distribution, and two extensions with heavy-tailed distributions — Student’s t (std) and skewed Student’s t (sstd). These models describe how volatility in time series, especially financial returns, changes over time.
 
-The data comes from 10 different markets (represented by ETFs), divided into two periods:
+The data comes from 5 different markets (represented by ETFs), divided into two periods:
 
 Pre-COVID period: from 2015 until early 2020,
 COVID and post-COVID period: from early 2020 until today.
