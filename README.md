@@ -3,7 +3,7 @@
 - **Language**: R
 
 
-In this project, I analyze three versions of the popular financial volatility model: the standard GARCH(1,1) with a normal distribution, and two other with heavy-tailed distributions — Student’s t (std) and skewed Student’s t (sstd). These models shows how volatility in time series, especially financial returns, changes over time.
+In this project, I analyze three versions of the popular financial volatility model: the standard GARCH(1,1) with a normal distribution, and two other with heavy-tailed distributions — Student’s t (std) and skewed Student’s t (sstd). These models show how volatility in time series, especially financial returns, changes over time.
 
 The data comes from 5 different markets (ETFs), divided into two periods:
 
